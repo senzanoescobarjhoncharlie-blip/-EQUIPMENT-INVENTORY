@@ -1,9 +1,15 @@
-from fastapi import APIRouter, HTTPException, status
+import re
+from typing import Optional
+from fastapi import APIRouter, HTTPException, Query, status
 from pymongo.errors import PyMongoError
 
 from core.database import get_equipos_collection
-from schemas.equipo import EquipoCreate, EquipoResponse
-from utils.mongo import serialize_doc
+from schemas.equipo import (
+    EquipoCreate,
+    EquipoResponse,
+    EquipoListResponse,
+)
+from utils.mongo import serialize_doc, serialize_list
 
 router = APIRouter(prefix="/equipos", tags=["Equipos Informáticos"])
 
@@ -51,4 +57,45 @@ def registrar_equipo(equipo_in: EquipoCreate):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error en la base de datos al registrar equipo: {str(err)}"
+        )
+
+
+# ============================================================================
+# 2. LISTAR TODOS LOS EQUIPOS
+# ============================================================================
+@router.get(
+    "",
+    response_model=EquipoListResponse,
+    summary="2. Listar todos los equipos",
+    description="Retorna el listado de equipos con soporte para paginación razonable (skip y limit) y filtros opcionales."
+)
+def listar_equipos(
+    skip: int = Query(0, ge=0, description="Cantidad de registros a omitir para paginación"),
+    limit: int = Query(100, ge=1, le=500, description="Límite máximo de equipos a retornar por página"),
+    tipo: Optional[str] = Query(None, description="Filtrar opcionalmente por tipo de equipo"),
+    marca: Optional[str] = Query(None, description="Filtrar opcionalmente por marca"),
+    estado: Optional[str] = Query(None, description="Filtrar opcionalmente por estado")
+):
+    collection = get_equipos_collection()
+
+    filtro = {}
+    if tipo and tipo.strip():
+        filtro["tipo"] = {"$regex": f"^{re.escape(tipo.strip())}$", "$options": "i"}
+    if marca and marca.strip():
+        filtro["marca"] = {"$regex": f"^{re.escape(marca.strip())}$", "$options": "i"}
+    if estado and estado.strip():
+        filtro["estado"] = {"$regex": f"^{re.escape(estado.strip())}$", "$options": "i"}
+
+    try:
+        total = collection.count_documents(filtro)
+        cursor = collection.find(filtro).skip(skip).limit(limit)
+        equipos = list(cursor)
+        return {
+            "total": total,
+            "equipos": serialize_list(equipos)
+        }
+    except PyMongoError as err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al listar equipos: {str(err)}"
         )
