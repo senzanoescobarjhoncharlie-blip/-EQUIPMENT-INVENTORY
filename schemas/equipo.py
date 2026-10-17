@@ -1,24 +1,46 @@
+import re
+from datetime import datetime
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from schemas.ubicacion import UbicacionCreate, UbicacionResponse, UbicacionUpdate
 from schemas.mantenimiento import MantenimientoCreate, MantenimientoResponse
 
+# Estados válidos normalizados permitidos
+ESTADOS_PERMITIDOS = {
+    "disponible",
+    "asignado",
+    "en_mantenimiento",
+    "en mantenimiento",
+    "dado_de_baja",
+    "dado de baja",
+    "operativo",
+    "en_reparacion",
+    "en reparacion",
+}
+
+
+def normalizar_texto_no_vacio(v: str, campo: str) -> str:
+    """Valida que una cadena no esté vacía ni contenga solo espacios en blanco."""
+    if not isinstance(v, str) or not v.strip():
+        raise ValueError(f"El campo '{campo}' no puede estar vacío ni contener solo espacios.")
+    return v.strip()
+
 
 class EquipoBase(BaseModel):
-    """Atributos base compartidos por un equipo informático."""
+    """Atributos base de un equipo informático institucional."""
 
     codigo: str = Field(
         ...,
         min_length=2,
         max_length=50,
-        description="Código patrimonial o identificador único institucional",
+        description="Código institucional o patrimonial del equipo",
         examples=["EQ-LAP-001"]
     )
     tipo: str = Field(
         ...,
         min_length=2,
         max_length=50,
-        description="Tipo de equipo (ej: Laptop, Servidor, Impresora, Switch, PC Escritorio)",
+        description="Categoría o tipo de equipo (ej: Computadora, Laptop, Impresora, Monitor, Servidor)",
         examples=["Laptop"]
     )
     marca: str = Field(
@@ -32,7 +54,7 @@ class EquipoBase(BaseModel):
         ...,
         min_length=1,
         max_length=100,
-        description="Modelo específico del fabricante",
+        description="Modelo comercial del equipo",
         examples=["Latitude 5420"]
     )
     numero_serie: str = Field(
@@ -44,23 +66,70 @@ class EquipoBase(BaseModel):
     )
     fecha_adquisicion: str = Field(
         ...,
-        description="Fecha de compra o ingreso en formato YYYY-MM-DD",
+        description="Fecha de adquisición en formato YYYY-MM-DD",
         examples=["2024-02-15"]
     )
     estado: str = Field(
-        default="Operativo",
-        description="Estado actual del equipo (ej: Operativo, En Mantenimiento, De Baja, En Reparación)",
-        examples=["Operativo"]
+        default="disponible",
+        description="Estado actual del equipo (ej: disponible, asignado, en_mantenimiento, dado_de_baja, operativo)",
+        examples=["disponible"]
     )
     caracteristicas: List[str] = Field(
         default_factory=list,
-        description="Lista de especificaciones técnicas del equipo",
-        examples=[["Intel Core i7 11th Gen", "16 GB RAM DDR4", "SSD 512GB NVMe", "Pantalla 14 FHD"]]
+        description="Lista de características técnicas del equipo",
+        examples=[["Intel Core i7 11th Gen", "16 GB RAM DDR4", "SSD 512GB NVMe"]]
     )
+
+    @field_validator("codigo")
+    @classmethod
+    def validar_codigo(cls, v: str) -> str:
+        return normalizar_texto_no_vacio(v, "codigo")
+
+    @field_validator("numero_serie")
+    @classmethod
+    def validar_numero_serie(cls, v: str) -> str:
+        return normalizar_texto_no_vacio(v, "numero_serie")
+
+    @field_validator("tipo")
+    @classmethod
+    def validar_tipo(cls, v: str) -> str:
+        return normalizar_texto_no_vacio(v, "tipo")
+
+    @field_validator("marca")
+    @classmethod
+    def validar_marca(cls, v: str) -> str:
+        return normalizar_texto_no_vacio(v, "marca")
+
+    @field_validator("modelo")
+    @classmethod
+    def validar_modelo(cls, v: str) -> str:
+        return normalizar_texto_no_vacio(v, "modelo")
+
+    @field_validator("fecha_adquisicion")
+    @classmethod
+    def validar_fecha(cls, v: str) -> str:
+        v_limpia = normalizar_texto_no_vacio(v, "fecha_adquisicion")
+        try:
+            datetime.strptime(v_limpia, "%Y-%m-%d")
+        except ValueError:
+            raise ValueError("El campo 'fecha_adquisicion' debe tener un formato válido de fecha (YYYY-MM-DD).")
+        return v_limpia
+
+    @field_validator("estado")
+    @classmethod
+    def validar_y_normalizar_estado(cls, v: str) -> str:
+        v_limpia = normalizar_texto_no_vacio(v, "estado").lower()
+        # Normalizar separadores
+        normalizado = v_limpia.replace(" ", "_")
+        if normalizado not in {s.replace(" ", "_") for s in ESTADOS_PERMITIDOS}:
+            raise ValueError(
+                f"Estado '{v}' no válido. Opciones permitidas: disponible, asignado, en_mantenimiento, dado_de_baja, operativo."
+            )
+        return normalizado
 
 
 class EquipoCreate(EquipoBase):
-    """Esquema para registrar un nuevo equipo."""
+    """Esquema para registrar un nuevo equipo en el inventario."""
 
     ubicacion: UbicacionCreate = Field(
         ...,
@@ -73,7 +142,7 @@ class EquipoCreate(EquipoBase):
 
 
 class EquipoUpdate(BaseModel):
-    """Esquema para modificar la información de un equipo existente."""
+    """Esquema para modificar parcialmente los datos de un equipo existente."""
 
     codigo: Optional[str] = Field(None, min_length=2, max_length=50)
     tipo: Optional[str] = Field(None, min_length=2, max_length=50)
@@ -85,11 +154,45 @@ class EquipoUpdate(BaseModel):
     caracteristicas: Optional[List[str]] = Field(None)
     ubicacion: Optional[UbicacionUpdate] = Field(None)
 
+    @field_validator("codigo", "numero_serie", "tipo", "marca", "modelo", mode="before")
+    @classmethod
+    def validar_campos_opcionales(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            if not isinstance(v, str) or not v.strip():
+                raise ValueError("Los valores a actualizar no pueden estar vacíos ni contener solo espacios.")
+            return v.strip()
+        return v
+
+    @field_validator("fecha_adquisicion")
+    @classmethod
+    def validar_fecha_opcional(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            v_limpia = normalizar_texto_no_vacio(v, "fecha_adquisicion")
+            try:
+                datetime.strptime(v_limpia, "%Y-%m-%d")
+            except ValueError:
+                raise ValueError("El campo 'fecha_adquisicion' debe tener un formato válido de fecha (YYYY-MM-DD).")
+            return v_limpia
+        return v
+
+    @field_validator("estado")
+    @classmethod
+    def validar_estado_opcional(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            v_limpia = normalizar_texto_no_vacio(v, "estado").lower()
+            normalizado = v_limpia.replace(" ", "_")
+            if normalizado not in {s.replace(" ", "_") for s in ESTADOS_PERMITIDOS}:
+                raise ValueError(
+                    f"Estado '{v}' no válido. Opciones permitidas: disponible, asignado, en_mantenimiento, dado_de_baja, operativo."
+                )
+            return normalizado
+        return v
+
 
 class EquipoResponse(EquipoBase):
-    """Esquema para devolver la información completa de un equipo."""
+    """Esquema de salida con el identificador serializado y modelos anidados."""
 
-    id: str = Field(..., description="Identificador único generado por la base de datos (ObjectId)")
+    id: str = Field(..., description="Identificador único generado por MongoDB (ObjectId serializado a str)")
     ubicacion: UbicacionResponse = Field(..., description="Ubicación física y responsable")
     mantenimientos: List[MantenimientoResponse] = Field(
         default_factory=list,
@@ -107,7 +210,7 @@ class EquipoResponse(EquipoBase):
                 "modelo": "Latitude 5420",
                 "numero_serie": "SN-DL5420-9988",
                 "fecha_adquisicion": "2024-02-15",
-                "estado": "Operativo",
+                "estado": "disponible",
                 "caracteristicas": [
                     "Intel Core i7 11th Gen",
                     "16 GB RAM DDR4",
@@ -134,7 +237,7 @@ class EquipoResponse(EquipoBase):
 
 
 class EquipoListResponse(BaseModel):
-    """Esquema para respuestas de listado con metadatos."""
+    """Esquema para respuestas de listado paginado."""
 
-    total: int = Field(..., description="Total de equipos encontrados")
-    equipos: List[EquipoResponse] = Field(..., description="Lista de equipos")
+    total: int = Field(..., description="Total de registros coincidentes")
+    equipos: List[EquipoResponse] = Field(..., description="Lista de equipos en la página actual")

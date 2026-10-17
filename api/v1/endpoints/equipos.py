@@ -1,6 +1,6 @@
 import re
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 from pymongo.errors import PyMongoError
 
 from core.database import get_equipos_collection
@@ -11,24 +11,26 @@ from schemas.equipo import (
     EquipoListResponse,
 )
 from schemas.mantenimiento import MantenimientoCreate, MantenimientoResponse
-from utils.errors import validate_object_id
-from utils.serializers import serialize_doc, serialize_list
+from utils.mongo import validate_object_id, serialize_doc, serialize_list
 
 router = APIRouter(prefix="/equipos", tags=["Equipos Informáticos"])
 
 
+# ============================================================================
+# 1. REGISTRAR EQUIPO
+# ============================================================================
 @router.post(
     "",
     response_model=EquipoResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="1. Registrar un nuevo equipo",
-    description="Crea un nuevo documento de equipo en la colección de MongoDB asegurando unicidad en código y número de serie."
+    summary="1. Registrar equipo",
+    description="Registra un nuevo equipo institucional en la colección 'equipos'. Valida unicidad en código y número de serie."
 )
-def crear_equipo(equipo_in: EquipoCreate):
+def registrar_equipo(equipo_in: EquipoCreate):
     collection = get_equipos_collection()
 
     try:
-        # Validación de duplicados para código y número de serie
+        # Validación de duplicidad para código y número de serie
         existente = collection.find_one({
             "$or": [
                 {"codigo": equipo_in.codigo},
@@ -39,11 +41,11 @@ def crear_equipo(equipo_in: EquipoCreate):
             if existente.get("codigo") == equipo_in.codigo:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Ya existe un equipo registrado con el código '{equipo_in.codigo}'."
+                    detail=f"Conflicto: Ya existe un equipo registrado con el código '{equipo_in.codigo}'."
                 )
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Ya existe un equipo registrado con el número de serie '{equipo_in.numero_serie}'."
+                detail=f"Conflicto: Ya existe un equipo registrado con el número de serie '{equipo_in.numero_serie}'."
             )
 
         doc = equipo_in.model_dump()
@@ -56,31 +58,34 @@ def crear_equipo(equipo_in: EquipoCreate):
     except PyMongoError as err:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error en la base de datos al registrar el equipo: {str(err)}"
+            detail=f"Error en la base de datos al registrar equipo: {str(err)}"
         )
 
 
+# ============================================================================
+# 2. LISTAR TODOS LOS EQUIPOS
+# ============================================================================
 @router.get(
     "",
     response_model=EquipoListResponse,
     summary="2. Listar todos los equipos",
-    description="Devuelve la lista completa de equipos registrados en el inventario con soporte para paginación y filtros opcionales."
+    description="Retorna el listado de equipos con soporte para paginación razonable (skip y limit) y filtros opcionales."
 )
 def listar_equipos(
-    skip: int = Query(0, ge=0, description="Número de registros a omitir para paginación"),
-    limit: int = Query(100, ge=1, le=500, description="Límite de registros a retornar"),
-    tipo: Optional[str] = Query(None, description="Filtrar opcionalmente por tipo"),
+    skip: int = Query(0, ge=0, description="Cantidad de registros a omitir para paginación"),
+    limit: int = Query(100, ge=1, le=500, description="Límite máximo de equipos a retornar por página"),
+    tipo: Optional[str] = Query(None, description="Filtrar opcionalmente por tipo de equipo"),
     marca: Optional[str] = Query(None, description="Filtrar opcionalmente por marca"),
     estado: Optional[str] = Query(None, description="Filtrar opcionalmente por estado")
 ):
     collection = get_equipos_collection()
 
     filtro = {}
-    if tipo:
+    if tipo and tipo.strip():
         filtro["tipo"] = {"$regex": f"^{re.escape(tipo.strip())}$", "$options": "i"}
-    if marca:
+    if marca and marca.strip():
         filtro["marca"] = {"$regex": f"^{re.escape(marca.strip())}$", "$options": "i"}
-    if estado:
+    if estado and estado.strip():
         filtro["estado"] = {"$regex": f"^{re.escape(estado.strip())}$", "$options": "i"}
 
     try:
@@ -98,33 +103,53 @@ def listar_equipos(
         )
 
 
+# ============================================================================
+# 6. BUSCAR POR CÓDIGO, NÚMERO DE SERIE O MODELO (RUTA ESTÁTICA PREVIA A DINÁMICAS)
+# ============================================================================
 @router.get(
     "/buscar",
     response_model=List[EquipoResponse],
-    summary="6. Buscar equipos por código, número de serie o modelo",
-    description="Realiza una búsqueda flexible insensitiva a mayúsculas/minúsculas en los campos código, número de serie o modelo."
+    summary="6. Buscar por código, número de serie o modelo",
+    description="Permite buscar equipos por código, número de serie o modelo usando parámetros de consulta seguros."
 )
 def buscar_equipos(
-    q: Optional[str] = Query(None, description="Término a buscar (código, número de serie o modelo)"),
-    termino: Optional[str] = Query(None, description="Alias alternativo para el término de búsqueda")
+    q: Optional[str] = Query(None, description="Término general a buscar en código, número de serie o modelo"),
+    codigo: Optional[str] = Query(None, description="Búsqueda por coincidencia en código"),
+    numero_serie: Optional[str] = Query(None, description="Búsqueda por coincidencia en número de serie"),
+    modelo: Optional[str] = Query(None, description="Búsqueda por coincidencia en modelo comercial"),
+    termino: Optional[str] = Query(None, description="Alias para el término general de búsqueda")
 ):
-    search_str = q or termino
-    if not search_str or not search_str.strip():
+    collection = get_equipos_collection()
+
+    condiciones = []
+
+    # Búsqueda específica por criterios múltiples
+    if codigo and codigo.strip():
+        condiciones.append({"codigo": {"$regex": re.escape(codigo.strip()), "$options": "i"}})
+    if numero_serie and numero_serie.strip():
+        condiciones.append({"numero_serie": {"$regex": re.escape(numero_serie.strip()), "$options": "i"}})
+    if modelo and modelo.strip():
+        condiciones.append({"modelo": {"$regex": re.escape(modelo.strip()), "$options": "i"}})
+
+    # Búsqueda general 'q' o 'termino'
+    termino_general = q or termino
+    if termino_general and termino_general.strip():
+        patron = re.escape(termino_general.strip())
+        condiciones.append({
+            "$or": [
+                {"codigo": {"$regex": patron, "$options": "i"}},
+                {"numero_serie": {"$regex": patron, "$options": "i"}},
+                {"modelo": {"$regex": patron, "$options": "i"}}
+            ]
+        })
+
+    if not condiciones:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Debe proporcionar el parámetro 'q' o 'termino' para realizar la búsqueda."
+            detail="Debe proporcionar al menos un criterio de búsqueda: 'q', 'codigo', 'numero_serie' o 'modelo'."
         )
 
-    collection = get_equipos_collection()
-    pattern = re.escape(search_str.strip())
-
-    filtro = {
-        "$or": [
-            {"codigo": {"$regex": pattern, "$options": "i"}},
-            {"numero_serie": {"$regex": pattern, "$options": "i"}},
-            {"modelo": {"$regex": pattern, "$options": "i"}}
-        ]
-    }
+    filtro = {"$and": condiciones} if len(condiciones) > 1 else condiciones[0]
 
     try:
         resultados = list(collection.find(filtro))
@@ -132,21 +157,22 @@ def buscar_equipos(
     except PyMongoError as err:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error en la búsqueda de equipos: {str(err)}"
+            detail=f"Error en la consulta de búsqueda: {str(err)}"
         )
 
 
+# ============================================================================
+# 7. FILTRAR POR TIPO
+# ============================================================================
 @router.get(
-    "/tipo/{tipo}",
+    "/filtrar/tipo",
     response_model=List[EquipoResponse],
-    summary="7. Filtrar equipos por tipo",
-    description="Retorna todos los equipos que correspondan a una categoría o tipo determinado (ej: Laptop, Servidor, Impresora)."
+    summary="7. Filtrar por tipo (query param)",
+    description="Filtra equipos por categoría o tipo mediante query parameter (ej: ?tipo=Laptop)."
 )
-@router.get("/filtrar/tipo/{tipo}", response_model=List[EquipoResponse], include_in_schema=False)
-def filtrar_por_tipo(tipo: str):
+def filtrar_por_tipo_query(tipo: str = Query(..., min_length=1, description="Categoría de equipo a filtrar")):
     collection = get_equipos_collection()
     filtro = {"tipo": {"$regex": f"^{re.escape(tipo.strip())}$", "$options": "i"}}
-
     try:
         resultados = list(collection.find(filtro))
         return serialize_list(resultados)
@@ -158,16 +184,28 @@ def filtrar_por_tipo(tipo: str):
 
 
 @router.get(
-    "/marca/{marca}",
+    "/filtrar/tipo/{tipo}",
     response_model=List[EquipoResponse],
-    summary="8. Filtrar equipos por marca",
-    description="Retorna todos los equipos pertenecientes a una marca de fabricante (ej: Dell, HP, Lenovo)."
+    summary="7b. Filtrar por tipo (path param)",
+    description="Filtra equipos por tipo mediante parámetro de ruta."
 )
-@router.get("/filtrar/marca/{marca}", response_model=List[EquipoResponse], include_in_schema=False)
-def filtrar_por_marca(marca: str):
+@router.get("/tipo/{tipo}", response_model=List[EquipoResponse], include_in_schema=False)
+def filtrar_por_tipo_path(tipo: str):
+    return filtrar_por_tipo_query(tipo=tipo)
+
+
+# ============================================================================
+# 8. FILTRAR POR MARCA
+# ============================================================================
+@router.get(
+    "/filtrar/marca",
+    response_model=List[EquipoResponse],
+    summary="8. Filtrar por marca (query param)",
+    description="Filtra equipos por marca del fabricante mediante query parameter (ej: ?marca=Dell)."
+)
+def filtrar_por_marca_query(marca: str = Query(..., min_length=1, description="Marca a filtrar")):
     collection = get_equipos_collection()
     filtro = {"marca": {"$regex": f"^{re.escape(marca.strip())}$", "$options": "i"}}
-
     try:
         resultados = list(collection.find(filtro))
         return serialize_list(resultados)
@@ -179,16 +217,28 @@ def filtrar_por_marca(marca: str):
 
 
 @router.get(
-    "/estado/{estado}",
+    "/filtrar/marca/{marca}",
     response_model=List[EquipoResponse],
-    summary="9. Filtrar equipos por estado",
-    description="Retorna todos los equipos en un estado específico (ej: Operativo, En Mantenimiento, De Baja)."
+    summary="8b. Filtrar por marca (path param)",
+    description="Filtra equipos por marca mediante parámetro de ruta."
 )
-@router.get("/filtrar/estado/{estado}", response_model=List[EquipoResponse], include_in_schema=False)
-def filtrar_por_estado(estado: str):
+@router.get("/marca/{marca}", response_model=List[EquipoResponse], include_in_schema=False)
+def filtrar_por_marca_path(marca: str):
+    return filtrar_por_marca_query(marca=marca)
+
+
+# ============================================================================
+# 9. FILTRAR POR ESTADO
+# ============================================================================
+@router.get(
+    "/filtrar/estado",
+    response_model=List[EquipoResponse],
+    summary="9. Filtrar por estado (query param)",
+    description="Filtra equipos por su situación o estado actual mediante query parameter (ej: ?estado=disponible)."
+)
+def filtrar_por_estado_query(estado: str = Query(..., min_length=1, description="Estado a filtrar")):
     collection = get_equipos_collection()
     filtro = {"estado": {"$regex": f"^{re.escape(estado.strip())}$", "$options": "i"}}
-
     try:
         resultados = list(collection.find(filtro))
         return serialize_list(resultados)
@@ -200,13 +250,56 @@ def filtrar_por_estado(estado: str):
 
 
 @router.get(
-    "/{id}",
-    response_model=EquipoResponse,
-    summary="3. Consultar un equipo mediante su identificador",
-    description="Obtiene el detalle completo de un equipo a partir de su ID de MongoDB (ObjectId)."
+    "/filtrar/estado/{estado}",
+    response_model=List[EquipoResponse],
+    summary="9b. Filtrar por estado (path param)",
+    description="Filtra equipos por estado mediante parámetro de ruta."
 )
-def consultar_equipo(id: str):
-    object_id = validate_object_id(id)
+@router.get("/estado/{estado}", response_model=List[EquipoResponse], include_in_schema=False)
+def filtrar_por_estado_path(estado: str):
+    return filtrar_por_estado_query(estado=estado)
+
+
+# ============================================================================
+# 10. CONSULTAR HISTORIAL DE MANTENIMIENTO DE UN EQUIPO
+# ============================================================================
+@router.get(
+    "/{equipo_id}/mantenimientos",
+    response_model=List[MantenimientoResponse],
+    summary="10. Consultar historial de mantenimiento",
+    description="Retorna la lista de mantenimientos del equipo especificado. Devuelve 404 si el equipo no existe o lista vacía si no tiene mantenimientos."
+)
+def consultar_mantenimientos(equipo_id: str):
+    object_id = validate_object_id(equipo_id)
+    collection = get_equipos_collection()
+
+    try:
+        equipo = collection.find_one({"_id": object_id}, {"mantenimientos": 1})
+        if not equipo:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Equipo con identificador '{equipo_id}' no existe."
+            )
+        mantenimientos = equipo.get("mantenimientos", [])
+        return serialize_list(mantenimientos)
+    except HTTPException:
+        raise
+    except PyMongoError as err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al consultar historial de mantenimiento: {str(err)}"
+        )
+
+
+@router.post(
+    "/{equipo_id}/mantenimientos",
+    response_model=MantenimientoResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Registrar nuevo mantenimiento a un equipo",
+    description="Añade un registro de mantenimiento al arreglo 'mantenimientos' del documento del equipo."
+)
+def agregar_mantenimiento(equipo_id: str, mantenimiento_in: MantenimientoCreate):
+    object_id = validate_object_id(equipo_id)
     collection = get_equipos_collection()
 
     try:
@@ -214,7 +307,43 @@ def consultar_equipo(id: str):
         if not equipo:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Equipo con identificador '{id}' no fue encontrado."
+                detail=f"Equipo con identificador '{equipo_id}' no existe."
+            )
+
+        nuevo_mantenimiento = mantenimiento_in.model_dump()
+        collection.update_one(
+            {"_id": object_id},
+            {"$push": {"mantenimientos": nuevo_mantenimiento}}
+        )
+        return nuevo_mantenimiento
+    except HTTPException:
+        raise
+    except PyMongoError as err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al registrar el mantenimiento: {str(err)}"
+        )
+
+
+# ============================================================================
+# 3. CONSULTAR UN EQUIPO POR IDENTIFICADOR
+# ============================================================================
+@router.get(
+    "/{equipo_id}",
+    response_model=EquipoResponse,
+    summary="3. Consultar un equipo por identificador",
+    description="Obtiene los datos completos de un equipo a partir de su ObjectId de MongoDB."
+)
+def consultar_equipo(equipo_id: str):
+    object_id = validate_object_id(equipo_id)
+    collection = get_equipos_collection()
+
+    try:
+        equipo = collection.find_one({"_id": object_id})
+        if not equipo:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Equipo con identificador '{equipo_id}' no fue encontrado."
             )
         return serialize_doc(equipo)
     except HTTPException:
@@ -226,14 +355,23 @@ def consultar_equipo(id: str):
         )
 
 
-@router.put(
-    "/{id}",
+# ============================================================================
+# 4. MODIFICAR UN EQUIPO (PATCH / PUT)
+# ============================================================================
+@router.patch(
+    "/{equipo_id}",
     response_model=EquipoResponse,
-    summary="4. Modificar la información de un equipo",
-    description="Actualiza los datos de un equipo existente. Permite actualización parcial o total de sus campos y ubicación."
+    summary="4. Modificar un equipo (actualización parcial)",
+    description="Actualiza parcialmente los campos válidos de un equipo. Valida unicidad en caso de cambiar código o serie."
 )
-def modificar_equipo(id: str, equipo_in: EquipoUpdate):
-    object_id = validate_object_id(id)
+@router.put(
+    "/{equipo_id}",
+    response_model=EquipoResponse,
+    summary="4b. Modificar un equipo (actualización total/parcial)",
+    include_in_schema=False
+)
+def modificar_equipo(equipo_id: str, equipo_in: EquipoUpdate):
+    object_id = validate_object_id(equipo_id)
     collection = get_equipos_collection()
 
     try:
@@ -241,7 +379,7 @@ def modificar_equipo(id: str, equipo_in: EquipoUpdate):
         if not equipo_actual:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Equipo con identificador '{id}' no existe."
+                detail=f"Equipo con identificador '{equipo_id}' no existe."
             )
 
         datos_actualizar = equipo_in.model_dump(exclude_unset=True)
@@ -262,15 +400,20 @@ def modificar_equipo(id: str, equipo_in: EquipoUpdate):
                 "$or": condiciones_duplicado
             })
             if colision:
+                if colision.get("codigo") == datos_actualizar.get("codigo"):
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=f"El código '{datos_actualizar['codigo']}' ya está en uso por otro equipo."
+                    )
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail="El nuevo código o número de serie ya está en uso por otro equipo."
+                    detail=f"El número de serie '{datos_actualizar['numero_serie']}' ya está en uso por otro equipo."
                 )
 
         # Si se actualiza la ubicación, se fusiona con la existente
-        if "ubicacion" in datos_actualizar:
+        if "ubicacion" in datos_actualizar and datos_actualizar["ubicacion"]:
             ubicacion_actual = equipo_actual.get("ubicacion", {})
-            ubicacion_actual.update(datos_actualizar["ubicacion"])
+            ubicacion_actual.update({k: v for k, v in datos_actualizar["ubicacion"].items() if v is not None})
             datos_actualizar["ubicacion"] = ubicacion_actual
 
         collection.update_one(
@@ -290,14 +433,17 @@ def modificar_equipo(id: str, equipo_in: EquipoUpdate):
         )
 
 
+# ============================================================================
+# 5. ELIMINAR UN EQUIPO (204 NO CONTENT)
+# ============================================================================
 @router.delete(
-    "/{id}",
-    status_code=status.HTTP_200_OK,
+    "/{equipo_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
     summary="5. Eliminar un equipo",
-    description="Elimina permanentemente un equipo del inventario mediante su identificador."
+    description="Elimina permanentemente un equipo del inventario mediante su identificador. Retorna 204 No Content sin cuerpo."
 )
-def eliminar_equipo(id: str):
-    object_id = validate_object_id(id)
+def eliminar_equipo(equipo_id: str):
+    object_id = validate_object_id(equipo_id)
     collection = get_equipos_collection()
 
     try:
@@ -305,80 +451,13 @@ def eliminar_equipo(id: str):
         if resultado.deleted_count == 0:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Equipo con identificador '{id}' no fue encontrado para eliminar."
+                detail=f"Equipo con identificador '{equipo_id}' no fue encontrado para eliminar."
             )
-        return {
-            "mensaje": f"Equipo con identificador '{id}' eliminado exitosamente.",
-            "id": id,
-            "eliminado": True
-        }
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     except HTTPException:
         raise
     except PyMongoError as err:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al eliminar el equipo: {str(err)}"
-        )
-
-
-@router.get(
-    "/{id}/mantenimientos",
-    response_model=List[MantenimientoResponse],
-    summary="10. Consultar el historial de mantenimiento de un equipo",
-    description="Devuelve la lista cronológica de todos los mantenimientos preventivos y correctivos realizados a un equipo."
-)
-def consultar_mantenimientos(id: str):
-    object_id = validate_object_id(id)
-    collection = get_equipos_collection()
-
-    try:
-        equipo = collection.find_one({"_id": object_id}, {"mantenimientos": 1})
-        if not equipo:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Equipo con identificador '{id}' no existe."
-            )
-        mantenimientos = equipo.get("mantenimientos", [])
-        return serialize_list(mantenimientos)
-    except HTTPException:
-        raise
-    except PyMongoError as err:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al consultar el historial de mantenimiento: {str(err)}"
-        )
-
-
-@router.post(
-    "/{id}/mantenimientos",
-    response_model=MantenimientoResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Extra: Registrar nuevo mantenimiento a un equipo",
-    description="Agrega un registro de mantenimiento al arreglo 'mantenimientos' del equipo especificado."
-)
-def agregar_mantenimiento(id: str, mantenimiento_in: MantenimientoCreate):
-    object_id = validate_object_id(id)
-    collection = get_equipos_collection()
-
-    try:
-        equipo = collection.find_one({"_id": object_id})
-        if not equipo:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Equipo con identificador '{id}' no existe."
-            )
-
-        nuevo_mantenimiento = mantenimiento_in.model_dump()
-        collection.update_one(
-            {"_id": object_id},
-            {"$push": {"mantenimientos": nuevo_mantenimiento}}
-        )
-
-        return nuevo_mantenimiento
-    except HTTPException:
-        raise
-    except PyMongoError as err:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al registrar el mantenimiento: {str(err)}"
         )
