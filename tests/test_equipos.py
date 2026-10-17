@@ -263,3 +263,41 @@ def test_filtrar_por_estado(client):
     res_estado_path = client.get("/api/v1/equipos/filtrar/estado/disponible")
     assert res_estado_path.status_code == 200
     assert len(res_estado_path.json()) == 1
+
+
+# ============================================================================
+# 10. PRUEBAS DE HISTORIAL DE MANTENIMIENTO
+# ============================================================================
+def test_historial_mantenimiento_vacio_y_con_registros(client):
+    """Verifica historial de mantenimiento vacío y tras agregar registros."""
+    creado = client.post("/api/v1/equipos", json=SAMPLE_EQUIPO).json()
+    equipo_id = creado["id"]
+
+    # Historial inicial vacío
+    res_hist = client.get(f"/api/v1/equipos/{equipo_id}/mantenimientos")
+    assert res_hist.status_code == 200
+    assert res_hist.json() == []
+
+    # Registrar un mantenimiento
+    mantenimiento = {
+        "fecha": "2025-02-10",
+        "tipo": "Preventivo",
+        "descripcion": "Limpieza general y mantenimiento térmico",
+        "tecnico": "Ing. Carlos Mendoza",
+        "costo": 45.0
+    }
+    res_add = client.post(f"/api/v1/equipos/{equipo_id}/mantenimientos", json=mantenimiento)
+    assert res_add.status_code == 201
+
+    # Consultar nuevamente
+    res_hist_updated = client.get(f"/api/v1/equipos/{equipo_id}/mantenimientos")
+    assert res_hist_updated.status_code == 200
+    assert len(res_hist_updated.json()) == 1
+    assert res_hist_updated.json()[0]["tecnico"] == "Ing. Carlos Mendoza"
+
+
+def test_historial_mantenimiento_equipo_inexistente(client):
+    """Verifica error 404 al consultar historial de un equipo inexistente."""
+    fake_id = str(ObjectId())
+    response = client.get(f"/api/v1/equipos/{fake_id}/mantenimientos")
+    assert response.status_code == 404

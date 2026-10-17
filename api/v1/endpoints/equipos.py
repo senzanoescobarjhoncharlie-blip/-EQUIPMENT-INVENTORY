@@ -10,6 +10,7 @@ from schemas.equipo import (
     EquipoResponse,
     EquipoListResponse,
 )
+from schemas.mantenimiento import MantenimientoCreate, MantenimientoResponse
 from utils.mongo import validate_object_id, serialize_doc, serialize_list
 
 router = APIRouter(prefix="/equipos", tags=["Equipos Informáticos"])
@@ -257,6 +258,71 @@ def filtrar_por_estado_query(estado: str = Query(..., min_length=1, description=
 @router.get("/estado/{estado}", response_model=List[EquipoResponse], include_in_schema=False)
 def filtrar_por_estado_path(estado: str):
     return filtrar_por_estado_query(estado=estado)
+
+
+# ============================================================================
+# 10. CONSULTAR HISTORIAL DE MANTENIMIENTO DE UN EQUIPO
+# ============================================================================
+@router.get(
+    "/{equipo_id}/mantenimientos",
+    response_model=List[MantenimientoResponse],
+    summary="10. Consultar historial de mantenimiento",
+    description="Retorna la lista de mantenimientos del equipo especificado. Devuelve 404 si el equipo no existe o lista vacía si no tiene mantenimientos."
+)
+def consultar_mantenimientos(equipo_id: str):
+    object_id = validate_object_id(equipo_id)
+    collection = get_equipos_collection()
+
+    try:
+        equipo = collection.find_one({"_id": object_id}, {"mantenimientos": 1})
+        if not equipo:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Equipo con identificador '{equipo_id}' no existe."
+            )
+        mantenimientos = equipo.get("mantenimientos", [])
+        return serialize_list(mantenimientos)
+    except HTTPException:
+        raise
+    except PyMongoError as err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al consultar historial de mantenimiento: {str(err)}"
+        )
+
+
+@router.post(
+    "/{equipo_id}/mantenimientos",
+    response_model=MantenimientoResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Registrar nuevo mantenimiento a un equipo",
+    description="Añade un registro de mantenimiento al arreglo 'mantenimientos' del documento del equipo."
+)
+def agregar_mantenimiento(equipo_id: str, mantenimiento_in: MantenimientoCreate):
+    object_id = validate_object_id(equipo_id)
+    collection = get_equipos_collection()
+
+    try:
+        equipo = collection.find_one({"_id": object_id})
+        if not equipo:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Equipo con identificador '{equipo_id}' no existe."
+            )
+
+        nuevo_mantenimiento = mantenimiento_in.model_dump()
+        collection.update_one(
+            {"_id": object_id},
+            {"$push": {"mantenimientos": nuevo_mantenimiento}}
+        )
+        return nuevo_mantenimiento
+    except HTTPException:
+        raise
+    except PyMongoError as err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al registrar el mantenimiento: {str(err)}"
+        )
 
 
 # ============================================================================
