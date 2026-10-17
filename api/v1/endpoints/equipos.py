@@ -1,6 +1,6 @@
 import re
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 from pymongo.errors import PyMongoError
 
 from core.database import get_equipos_collection
@@ -207,4 +207,34 @@ def modificar_equipo(equipo_id: str, equipo_in: EquipoUpdate):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al modificar el equipo: {str(err)}"
+        )
+
+
+# ============================================================================
+# 5. ELIMINAR UN EQUIPO (204 NO CONTENT)
+# ============================================================================
+@router.delete(
+    "/{equipo_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="5. Eliminar un equipo",
+    description="Elimina permanentemente un equipo del inventario mediante su identificador. Retorna 204 No Content sin cuerpo."
+)
+def eliminar_equipo(equipo_id: str):
+    object_id = validate_object_id(equipo_id)
+    collection = get_equipos_collection()
+
+    try:
+        resultado = collection.delete_one({"_id": object_id})
+        if resultado.deleted_count == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Equipo con identificador '{equipo_id}' no fue encontrado para eliminar."
+            )
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except HTTPException:
+        raise
+    except PyMongoError as err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al eliminar el equipo: {str(err)}"
         )
