@@ -6,20 +6,16 @@ name: CI
 # ---------------------------------------------------------------------------
 on:
   # Cuando se abre o se actualiza un Pull Request cuyo destino sea main o dev.
-  # Es la verificación "antes de integrar": el PR muestra ✓ o ✗ según el resultado.
   pull_request:
     branches: [main, dev]
 
   # Cuando se hace push directamente a main o dev (incluye el merge de un PR).
-  # Comprueba que el código ya integrado sigue funcionando.
   push:
     branches: [main, dev]
 
 # ---------------------------------------------------------------------------
 # CONTROL DE EJECUCIONES DUPLICADAS
 # ---------------------------------------------------------------------------
-# Si subes un commit nuevo a la misma rama o PR mientras el CI aún corre,
-# cancela la ejecución anterior (ya quedó desactualizada) y ahorra minutos.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -27,7 +23,6 @@ concurrency:
 # ---------------------------------------------------------------------------
 # PERMISOS
 # ---------------------------------------------------------------------------
-# Principio de mínimo privilegio: el workflow solo puede LEER el repositorio.
 permissions:
   contents: read
 
@@ -64,11 +59,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Paso 4: "compila" los archivos .py del proyecto
+      # Paso 4: verifica que el código compila
       - name: Verificar que el código compila
-        run: python -m compileall -q main.py api core schemas utils
+        run: python -m compileall -q main.py api core schemas utils tests
 
-      # Paso 5: importa la aplicación como lo haría uvicorn al arrancar
+      # Paso 5: verifica que la aplicación arranca e importa sus rutas
       - name: Verificar que la aplicación arranca (importa y registra rutas)
         env:
           APP_NAME: Sistema de Inventario de Equipos Informaticos
@@ -89,3 +84,14 @@ jobs:
           for ruta in rutas:
               print("  ", ruta)
           PY
+
+      # Paso 6: ejecuta la suite completa de pruebas unitarias y de integración
+      - name: Ejecutar pruebas automatizadas con pytest
+        env:
+          APP_NAME: Sistema de Inventario de Equipos Informaticos
+          APP_VERSION: 1.0.0
+          API_V1_PREFIX: /api/v1
+          MONGODB_URI: mongodb://localhost:27017
+          MONGODB_DB: inventario_equipos_ci
+          MONGODB_COLLECTION: equipos
+        run: pytest -v tests/
