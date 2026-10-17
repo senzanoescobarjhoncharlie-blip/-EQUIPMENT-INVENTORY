@@ -56,21 +56,9 @@ app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
 @app.get("/", tags=["Sistema"], summary="Información general de la API")
 def raiz():
-    """Ruta raíz de bienvenida con metadatos y enlaces de documentación."""
+    """Ruta raíz de bienvenida."""
     return {
-        "aplicacion": settings.APP_NAME,
-        "version": settings.APP_VERSION,
-        "estado": "activo",
-        "documentacion": {
-            "swagger": "/docs",
-            "redoc": "/redoc"
-        },
-        "endpoints_principales": {
-            "listar_equipos": f"{settings.API_V1_PREFIX}/equipos",
-            "buscar_equipos": f"{settings.API_V1_PREFIX}/equipos/buscar?q=termino",
-            "filtrar_tipo": f"{settings.API_V1_PREFIX}/equipos/tipo/Laptop",
-            "salud": "/health"
-        }
+        "mensaje": "Sistema de Inventario de Equipos Informáticos funcionando"
     }
 
 
