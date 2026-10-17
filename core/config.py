@@ -12,7 +12,12 @@ class Settings(BaseSettings):
     # Base de datos MongoDB
     MONGODB_URI: str = "mongodb://localhost:27017"
     MONGODB_DB: str = "inventario_equipos_db"
+    MONGODB_DATABASE: str = ""
     MONGODB_COLLECTION: str = "equipos"
+
+    def model_post_init(self, __context):
+        if self.MONGODB_DATABASE and (not self.MONGODB_DB or self.MONGODB_DB == "inventario_equipos_db"):
+            self.MONGODB_DB = self.MONGODB_DATABASE
 
     model_config = SettingsConfigDict(
         env_file=".env",
