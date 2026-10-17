@@ -169,3 +169,4 @@ def eliminar_equipo(id: str):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al eliminar equipo: {str(err)}"
         )
+
