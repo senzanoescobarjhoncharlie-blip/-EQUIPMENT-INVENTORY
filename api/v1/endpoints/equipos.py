@@ -172,3 +172,4 @@ def eliminar_equipo(id: str):
 
 
 
+
