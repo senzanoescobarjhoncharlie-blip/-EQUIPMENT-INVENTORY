@@ -1,3 +1,5 @@
+from bson import ObjectId
+
 SAMPLE_EQUIPO = {
     "codigo": "EQ-PRB-001",
     "tipo": "Laptop",
@@ -96,3 +98,30 @@ def test_listar_equipos_con_paginacion(client):
     data = response.json()
     assert data["total"] == 5
     assert len(data["equipos"]) == 2
+
+
+# ============================================================================
+# 3. PRUEBAS DE CONSULTA POR IDENTIFICADOR (GET /api/v1/equipos/{id})
+# ============================================================================
+def test_consultar_equipo_por_id_valido(client):
+    """Verifica consulta exitosa de un equipo existente mediante su ID."""
+    creado = client.post("/api/v1/equipos", json=SAMPLE_EQUIPO).json()
+    equipo_id = creado["id"]
+
+    response = client.get(f"/api/v1/equipos/{equipo_id}")
+    assert response.status_code == 200
+    assert response.json()["id"] == equipo_id
+    assert response.json()["codigo"] == SAMPLE_EQUIPO["codigo"]
+
+
+def test_consultar_equipo_inexistente(client):
+    """Verifica error 404 Not Found para un ObjectId válido pero inexistente."""
+    fake_id = str(ObjectId())
+    response = client.get(f"/api/v1/equipos/{fake_id}")
+    assert response.status_code == 404
+
+
+def test_consultar_equipo_id_invalido(client):
+    """Verifica error 400 Bad Request cuando el identificador no es ObjectId."""
+    response = client.get("/api/v1/equipos/id-invalido-123")
+    assert response.status_code == 400
