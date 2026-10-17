@@ -215,3 +215,19 @@ def test_buscar_equipos_sin_criterios(client):
     """Verifica 400 Bad Request si no se envía ningún parámetro de búsqueda."""
     response = client.get("/api/v1/equipos/buscar")
     assert response.status_code == 400
+
+
+# ============================================================================
+# 7. PRUEBAS DE FILTRO POR TIPO (GET /api/v1/equipos/filtrar/tipo)
+# ============================================================================
+def test_filtrar_por_tipo(client):
+    """Verifica filtrado de equipos por categoría o tipo."""
+    client.post("/api/v1/equipos", json=SAMPLE_EQUIPO)
+
+    res_tipo_query = client.get("/api/v1/equipos/filtrar/tipo?tipo=Laptop")
+    assert res_tipo_query.status_code == 200
+    assert len(res_tipo_query.json()) == 1
+
+    res_tipo_path = client.get("/api/v1/equipos/filtrar/tipo/Laptop")
+    assert res_tipo_path.status_code == 200
+    assert len(res_tipo_path.json()) == 1

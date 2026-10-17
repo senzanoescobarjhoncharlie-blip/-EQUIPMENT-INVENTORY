@@ -161,6 +161,39 @@ def buscar_equipos(
 
 
 # ============================================================================
+# 7. FILTRAR POR TIPO
+# ============================================================================
+@router.get(
+    "/filtrar/tipo",
+    response_model=List[EquipoResponse],
+    summary="7. Filtrar por tipo (query param)",
+    description="Filtra equipos por categoría o tipo mediante query parameter (ej: ?tipo=Laptop)."
+)
+def filtrar_por_tipo_query(tipo: str = Query(..., min_length=1, description="Categoría de equipo a filtrar")):
+    collection = get_equipos_collection()
+    filtro = {"tipo": {"$regex": f"^{re.escape(tipo.strip())}$", "$options": "i"}}
+    try:
+        resultados = list(collection.find(filtro))
+        return serialize_list(resultados)
+    except PyMongoError as err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al filtrar por tipo: {str(err)}"
+        )
+
+
+@router.get(
+    "/filtrar/tipo/{tipo}",
+    response_model=List[EquipoResponse],
+    summary="7b. Filtrar por tipo (path param)",
+    description="Filtra equipos por tipo mediante parámetro de ruta."
+)
+@router.get("/tipo/{tipo}", response_model=List[EquipoResponse], include_in_schema=False)
+def filtrar_por_tipo_path(tipo: str):
+    return filtrar_por_tipo_query(tipo=tipo)
+
+
+# ============================================================================
 # 3. CONSULTAR UN EQUIPO POR IDENTIFICADOR
 # ============================================================================
 @router.get(
