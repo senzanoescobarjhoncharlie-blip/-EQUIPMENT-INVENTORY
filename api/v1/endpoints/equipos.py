@@ -5,6 +5,7 @@ from pymongo.errors import PyMongoError
 
 from core.database import get_equipos_collection
 from schemas.equipo import EquipoCreate, EquipoResponse, EquipoListResponse
+from utils.errors import validate_object_id
 from utils.serializers import serialize_doc, serialize_list
 
 router = APIRouter(prefix="/equipos", tags=["Equipos"])
@@ -81,4 +82,29 @@ def listar_equipos(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al listar equipos: {str(err)}"
+        )
+
+
+@router.get(
+    "/{id}",
+    response_model=EquipoResponse,
+    summary="Consultar un equipo por ID"
+)
+def consultar_equipo(id: str):
+    object_id = validate_object_id(id)
+    collection = get_equipos_collection()
+    try:
+        equipo = collection.find_one({"_id": object_id})
+        if not equipo:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Equipo con ID '{id}' no encontrado"
+            )
+        return serialize_doc(equipo)
+    except HTTPException:
+        raise
+    except PyMongoError as err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al consultar equipo: {str(err)}"
         )
