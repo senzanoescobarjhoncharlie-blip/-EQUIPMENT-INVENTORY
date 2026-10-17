@@ -158,3 +158,26 @@ def test_modificar_equipo_conflicto_codigo(client):
 
     response = client.patch(f"/api/v1/equipos/{eq2['id']}", json={"codigo": SAMPLE_EQUIPO["codigo"]})
     assert response.status_code == 409
+
+
+# ============================================================================
+# 5. PRUEBAS DE ELIMINACIÓN (DELETE /api/v1/equipos/{id})
+# ============================================================================
+def test_eliminar_equipo_exitoso(client):
+    """Verifica eliminación exitosa retornando 204 No Content sin cuerpo."""
+    creado = client.post("/api/v1/equipos", json=SAMPLE_EQUIPO).json()
+    equipo_id = creado["id"]
+
+    response = client.delete(f"/api/v1/equipos/{equipo_id}")
+    assert response.status_code == 204
+    assert response.content == b""
+
+    # Verificar que ya no existe
+    assert client.get(f"/api/v1/equipos/{equipo_id}").status_code == 404
+
+
+def test_eliminar_equipo_inexistente(client):
+    """Verifica 404 al intentar eliminar un equipo que no existe."""
+    fake_id = str(ObjectId())
+    response = client.delete(f"/api/v1/equipos/{fake_id}")
+    assert response.status_code == 404
