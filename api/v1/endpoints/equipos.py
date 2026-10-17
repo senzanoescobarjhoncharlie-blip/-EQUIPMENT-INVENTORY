@@ -144,3 +144,28 @@ def modificar_equipo(id: str, equipo_in: EquipoUpdate):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al modificar equipo: {str(err)}"
         )
+
+
+@router.delete(
+    "/{id}",
+    status_code=status.HTTP_200_OK,
+    summary="Eliminar un equipo"
+)
+def eliminar_equipo(id: str):
+    object_id = validate_object_id(id)
+    collection = get_equipos_collection()
+    try:
+        resultado = collection.delete_one({"_id": object_id})
+        if resultado.deleted_count == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Equipo con ID '{id}' no encontrado"
+            )
+        return {"mensaje": "Equipo eliminado correctamente", "id": id, "eliminado": True}
+    except HTTPException:
+        raise
+    except PyMongoError as err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al eliminar equipo: {str(err)}"
+        )
