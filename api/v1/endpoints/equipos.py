@@ -227,6 +227,39 @@ def filtrar_por_marca_path(marca: str):
 
 
 # ============================================================================
+# 9. FILTRAR POR ESTADO
+# ============================================================================
+@router.get(
+    "/filtrar/estado",
+    response_model=List[EquipoResponse],
+    summary="9. Filtrar por estado (query param)",
+    description="Filtra equipos por su situación o estado actual mediante query parameter (ej: ?estado=disponible)."
+)
+def filtrar_por_estado_query(estado: str = Query(..., min_length=1, description="Estado a filtrar")):
+    collection = get_equipos_collection()
+    filtro = {"estado": {"$regex": f"^{re.escape(estado.strip())}$", "$options": "i"}}
+    try:
+        resultados = list(collection.find(filtro))
+        return serialize_list(resultados)
+    except PyMongoError as err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al filtrar por estado: {str(err)}"
+        )
+
+
+@router.get(
+    "/filtrar/estado/{estado}",
+    response_model=List[EquipoResponse],
+    summary="9b. Filtrar por estado (path param)",
+    description="Filtra equipos por estado mediante parámetro de ruta."
+)
+@router.get("/estado/{estado}", response_model=List[EquipoResponse], include_in_schema=False)
+def filtrar_por_estado_path(estado: str):
+    return filtrar_por_estado_query(estado=estado)
+
+
+# ============================================================================
 # 3. CONSULTAR UN EQUIPO POR IDENTIFICADOR
 # ============================================================================
 @router.get(

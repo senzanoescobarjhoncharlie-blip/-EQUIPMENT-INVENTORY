@@ -247,3 +247,19 @@ def test_filtrar_por_marca(client):
     res_marca_path = client.get("/api/v1/equipos/filtrar/marca/Dell")
     assert res_marca_path.status_code == 200
     assert len(res_marca_path.json()) == 1
+
+
+# ============================================================================
+# 9. PRUEBAS DE FILTRO POR ESTADO (GET /api/v1/equipos/filtrar/estado)
+# ============================================================================
+def test_filtrar_por_estado(client):
+    """Verifica filtrado de equipos por su situación o estado actual."""
+    client.post("/api/v1/equipos", json=SAMPLE_EQUIPO)
+
+    res_estado_query = client.get("/api/v1/equipos/filtrar/estado?estado=disponible")
+    assert res_estado_query.status_code == 200
+    assert len(res_estado_query.json()) == 1
+
+    res_estado_path = client.get("/api/v1/equipos/filtrar/estado/disponible")
+    assert res_estado_path.status_code == 200
+    assert len(res_estado_path.json()) == 1
