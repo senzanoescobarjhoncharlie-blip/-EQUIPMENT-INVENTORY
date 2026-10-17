@@ -9,7 +9,7 @@ from schemas.equipo import (
     EquipoResponse,
     EquipoListResponse,
 )
-from utils.mongo import serialize_doc, serialize_list
+from utils.mongo import validate_object_id, serialize_doc, serialize_list
 
 router = APIRouter(prefix="/equipos", tags=["Equipos Informáticos"])
 
@@ -98,4 +98,34 @@ def listar_equipos(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al listar equipos: {str(err)}"
+        )
+
+
+# ============================================================================
+# 3. CONSULTAR UN EQUIPO POR IDENTIFICADOR
+# ============================================================================
+@router.get(
+    "/{equipo_id}",
+    response_model=EquipoResponse,
+    summary="3. Consultar un equipo por identificador",
+    description="Obtiene los datos completos de un equipo a partir de su ObjectId de MongoDB."
+)
+def consultar_equipo(equipo_id: str):
+    object_id = validate_object_id(equipo_id)
+    collection = get_equipos_collection()
+
+    try:
+        equipo = collection.find_one({"_id": object_id})
+        if not equipo:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Equipo con identificador '{equipo_id}' no fue encontrado."
+            )
+        return serialize_doc(equipo)
+    except HTTPException:
+        raise
+    except PyMongoError as err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al consultar el equipo: {str(err)}"
         )
