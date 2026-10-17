@@ -1,0 +1,45 @@
+# Entornos virtuales
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Byte-compiled / optimizados
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Archivos de entorno y credenciales (mantener seguro)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Vercel
+.vercel/
+
+# Logs y bases de datos temporales
+*.log
+*.sqlite
+*.sqlite3
+
+# Editores e IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Pruebas y cobertura
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# SO
+.DS_Store
+Thumbs.db
+*.bak
+generar_historial.ps1

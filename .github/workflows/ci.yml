@@ -1,0 +1,91 @@
+# Nombre del workflow: es el que aparece en la pestaña "Actions" de GitHub.
+name: CI
+
+# ---------------------------------------------------------------------------
+# CUÁNDO SE EJECUTA
+# ---------------------------------------------------------------------------
+on:
+  # Cuando se abre o se actualiza un Pull Request cuyo destino sea main o dev.
+  # Es la verificación "antes de integrar": el PR muestra ✓ o ✗ según el resultado.
+  pull_request:
+    branches: [main, dev]
+
+  # Cuando se hace push directamente a main o dev (incluye el merge de un PR).
+  # Comprueba que el código ya integrado sigue funcionando.
+  push:
+    branches: [main, dev]
+
+# ---------------------------------------------------------------------------
+# CONTROL DE EJECUCIONES DUPLICADAS
+# ---------------------------------------------------------------------------
+# Si subes un commit nuevo a la misma rama o PR mientras el CI aún corre,
+# cancela la ejecución anterior (ya quedó desactualizada) y ahorra minutos.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# ---------------------------------------------------------------------------
+# PERMISOS
+# ---------------------------------------------------------------------------
+# Principio de mínimo privilegio: el workflow solo puede LEER el repositorio.
+permissions:
+  contents: read
+
+# ---------------------------------------------------------------------------
+# TRABAJOS (jobs)
+# ---------------------------------------------------------------------------
+jobs:
+  build:
+    name: Build (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12.3"]
+
+    steps:
+      # Paso 1: descarga el código del repositorio
+      - name: Checkout del código
+        uses: actions/checkout@v4
+
+      # Paso 2: instala la versión de Python indicada por la matriz.
+      - name: Configurar Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      # Paso 3: instala dependencias
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Paso 4: "compila" los archivos .py del proyecto
+      - name: Verificar que el código compila
+        run: python -m compileall -q main.py api core schemas utils
+
+      # Paso 5: importa la aplicación como lo haría uvicorn al arrancar
+      - name: Verificar que la aplicación arranca (importa y registra rutas)
+        env:
+          APP_NAME: Sistema de Inventario de Equipos Informaticos
+          APP_VERSION: 1.0.0
+          API_V1_PREFIX: /api/v1
+          MONGODB_URI: mongodb://localhost:27017
+          MONGODB_DB: inventario_equipos_ci
+          MONGODB_COLLECTION: equipos
+        run: |
+          python - <<'PY'
+          from main import app
+          rutas = sorted(
+              f"{','.join(sorted(r.methods))} {r.path}"
+              for r in app.routes
+              if hasattr(r, "methods")
+          )
+          print(f"Aplicación cargada correctamente: {len(rutas)} rutas")
+          for ruta in rutas:
+              print("  ", ruta)
+          PY
