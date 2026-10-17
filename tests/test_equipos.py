@@ -69,3 +69,30 @@ def test_registrar_equipo_duplicado_numero_serie(client):
     response = client.post("/api/v1/equipos", json=duplicado)
     assert response.status_code == 409
     assert "serie" in response.json()["detail"].lower()
+
+
+# ============================================================================
+# 2. PRUEBAS DE LISTADO Y PAGINACIÓN (GET /api/v1/equipos)
+# ============================================================================
+def test_listar_equipos_vacio(client):
+    """Verifica respuesta adecuada cuando no hay equipos registrados."""
+    response = client.get("/api/v1/equipos")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 0
+    assert data["equipos"] == []
+
+
+def test_listar_equipos_con_paginacion(client):
+    """Verifica funcionamiento de paginación con skip y limit."""
+    for i in range(5):
+        eq = dict(SAMPLE_EQUIPO)
+        eq["codigo"] = f"EQ-PAG-{i}"
+        eq["numero_serie"] = f"SN-PAG-{i}"
+        client.post("/api/v1/equipos", json=eq)
+
+    response = client.get("/api/v1/equipos?skip=1&limit=2")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 5
+    assert len(data["equipos"]) == 2
