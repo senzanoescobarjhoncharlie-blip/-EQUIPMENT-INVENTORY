@@ -170,3 +170,4 @@ def eliminar_equipo(id: str):
             detail=f"Error al eliminar equipo: {str(err)}"
         )
 
+
