@@ -231,3 +231,19 @@ def test_filtrar_por_tipo(client):
     res_tipo_path = client.get("/api/v1/equipos/filtrar/tipo/Laptop")
     assert res_tipo_path.status_code == 200
     assert len(res_tipo_path.json()) == 1
+
+
+# ============================================================================
+# 8. PRUEBAS DE FILTRO POR MARCA (GET /api/v1/equipos/filtrar/marca)
+# ============================================================================
+def test_filtrar_por_marca(client):
+    """Verifica filtrado de equipos por marca del fabricante."""
+    client.post("/api/v1/equipos", json=SAMPLE_EQUIPO)
+
+    res_marca_query = client.get("/api/v1/equipos/filtrar/marca?marca=Dell")
+    assert res_marca_query.status_code == 200
+    assert len(res_marca_query.json()) == 1
+
+    res_marca_path = client.get("/api/v1/equipos/filtrar/marca/Dell")
+    assert res_marca_path.status_code == 200
+    assert len(res_marca_path.json()) == 1

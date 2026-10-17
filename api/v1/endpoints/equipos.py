@@ -194,6 +194,39 @@ def filtrar_por_tipo_path(tipo: str):
 
 
 # ============================================================================
+# 8. FILTRAR POR MARCA
+# ============================================================================
+@router.get(
+    "/filtrar/marca",
+    response_model=List[EquipoResponse],
+    summary="8. Filtrar por marca (query param)",
+    description="Filtra equipos por marca del fabricante mediante query parameter (ej: ?marca=Dell)."
+)
+def filtrar_por_marca_query(marca: str = Query(..., min_length=1, description="Marca a filtrar")):
+    collection = get_equipos_collection()
+    filtro = {"marca": {"$regex": f"^{re.escape(marca.strip())}$", "$options": "i"}}
+    try:
+        resultados = list(collection.find(filtro))
+        return serialize_list(resultados)
+    except PyMongoError as err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al filtrar por marca: {str(err)}"
+        )
+
+
+@router.get(
+    "/filtrar/marca/{marca}",
+    response_model=List[EquipoResponse],
+    summary="8b. Filtrar por marca (path param)",
+    description="Filtra equipos por marca mediante parámetro de ruta."
+)
+@router.get("/marca/{marca}", response_model=List[EquipoResponse], include_in_schema=False)
+def filtrar_por_marca_path(marca: str):
+    return filtrar_por_marca_query(marca=marca)
+
+
+# ============================================================================
 # 3. CONSULTAR UN EQUIPO POR IDENTIFICADOR
 # ============================================================================
 @router.get(
