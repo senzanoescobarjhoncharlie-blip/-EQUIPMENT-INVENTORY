@@ -125,3 +125,36 @@ def test_consultar_equipo_id_invalido(client):
     """Verifica error 400 Bad Request cuando el identificador no es ObjectId."""
     response = client.get("/api/v1/equipos/id-invalido-123")
     assert response.status_code == 400
+
+
+# ============================================================================
+# 4. PRUEBAS DE MODIFICACIÓN PARCIAL (PATCH /api/v1/equipos/{id})
+# ============================================================================
+def test_modificar_equipo_parcial(client):
+    """Verifica actualización parcial mediante PATCH."""
+    creado = client.post("/api/v1/equipos", json=SAMPLE_EQUIPO).json()
+    equipo_id = creado["id"]
+
+    cambios = {
+        "modelo": "Latitude 5430",
+        "estado": "en_mantenimiento"
+    }
+    response = client.patch(f"/api/v1/equipos/{equipo_id}", json=cambios)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["modelo"] == "Latitude 5430"
+    assert data["estado"] == "en_mantenimiento"
+    assert data["codigo"] == SAMPLE_EQUIPO["codigo"]
+
+
+def test_modificar_equipo_conflicto_codigo(client):
+    """Verifica error 409 si la actualización colisiona con el código de otro equipo."""
+    eq1 = client.post("/api/v1/equipos", json=SAMPLE_EQUIPO).json()
+
+    eq2_data = dict(SAMPLE_EQUIPO)
+    eq2_data["codigo"] = "EQ-OTRO-002"
+    eq2_data["numero_serie"] = "SN-OTRO-002"
+    eq2 = client.post("/api/v1/equipos", json=eq2_data).json()
+
+    response = client.patch(f"/api/v1/equipos/{eq2['id']}", json={"codigo": SAMPLE_EQUIPO["codigo"]})
+    assert response.status_code == 409

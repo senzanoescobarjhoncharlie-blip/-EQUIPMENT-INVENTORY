@@ -6,6 +6,7 @@ from pymongo.errors import PyMongoError
 from core.database import get_equipos_collection
 from schemas.equipo import (
     EquipoCreate,
+    EquipoUpdate,
     EquipoResponse,
     EquipoListResponse,
 )
@@ -128,4 +129,82 @@ def consultar_equipo(equipo_id: str):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al consultar el equipo: {str(err)}"
+        )
+
+
+# ============================================================================
+# 4. MODIFICAR UN EQUIPO (PATCH / PUT)
+# ============================================================================
+@router.patch(
+    "/{equipo_id}",
+    response_model=EquipoResponse,
+    summary="4. Modificar un equipo (actualización parcial)",
+    description="Actualiza parcialmente los campos válidos de un equipo. Valida unicidad en caso de cambiar código o serie."
+)
+@router.put(
+    "/{equipo_id}",
+    response_model=EquipoResponse,
+    summary="4b. Modificar un equipo (actualización total/parcial)",
+    include_in_schema=False
+)
+def modificar_equipo(equipo_id: str, equipo_in: EquipoUpdate):
+    object_id = validate_object_id(equipo_id)
+    collection = get_equipos_collection()
+
+    try:
+        equipo_actual = collection.find_one({"_id": object_id})
+        if not equipo_actual:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Equipo con identificador '{equipo_id}' no existe."
+            )
+
+        datos_actualizar = equipo_in.model_dump(exclude_unset=True)
+
+        if not datos_actualizar:
+            return serialize_doc(equipo_actual)
+
+        # Validación de duplicidad si cambia código o serie
+        condiciones_duplicado = []
+        if "codigo" in datos_actualizar and datos_actualizar["codigo"] != equipo_actual.get("codigo"):
+            condiciones_duplicado.append({"codigo": datos_actualizar["codigo"]})
+        if "numero_serie" in datos_actualizar and datos_actualizar["numero_serie"] != equipo_actual.get("numero_serie"):
+            condiciones_duplicado.append({"numero_serie": datos_actualizar["numero_serie"]})
+
+        if condiciones_duplicado:
+            colision = collection.find_one({
+                "_id": {"$ne": object_id},
+                "$or": condiciones_duplicado
+            })
+            if colision:
+                if colision.get("codigo") == datos_actualizar.get("codigo"):
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=f"El código '{datos_actualizar['codigo']}' ya está en uso por otro equipo."
+                    )
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"El número de serie '{datos_actualizar['numero_serie']}' ya está en uso por otro equipo."
+                )
+
+        # Si se actualiza la ubicación, se fusiona con la existente
+        if "ubicacion" in datos_actualizar and datos_actualizar["ubicacion"]:
+            ubicacion_actual = equipo_actual.get("ubicacion", {})
+            ubicacion_actual.update({k: v for k, v in datos_actualizar["ubicacion"].items() if v is not None})
+            datos_actualizar["ubicacion"] = ubicacion_actual
+
+        collection.update_one(
+            {"_id": object_id},
+            {"$set": datos_actualizar}
+        )
+
+        equipo_actualizado = collection.find_one({"_id": object_id})
+        return serialize_doc(equipo_actualizado)
+
+    except HTTPException:
+        raise
+    except PyMongoError as err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al modificar el equipo: {str(err)}"
         )
