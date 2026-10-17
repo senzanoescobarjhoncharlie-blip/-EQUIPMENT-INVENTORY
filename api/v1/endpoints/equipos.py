@@ -1,5 +1,5 @@
 import re
-from typing import Optional
+from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from pymongo.errors import PyMongoError
 
@@ -99,6 +99,64 @@ def listar_equipos(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al listar equipos: {str(err)}"
+        )
+
+
+# ============================================================================
+# 6. BUSCAR POR CÓDIGO, NÚMERO DE SERIE O MODELO (RUTA ESTÁTICA PREVIA A DINÁMICAS)
+# ============================================================================
+@router.get(
+    "/buscar",
+    response_model=List[EquipoResponse],
+    summary="6. Buscar por código, número de serie o modelo",
+    description="Permite buscar equipos por código, número de serie o modelo usando parámetros de consulta seguros."
+)
+def buscar_equipos(
+    q: Optional[str] = Query(None, description="Término general a buscar en código, número de serie o modelo"),
+    codigo: Optional[str] = Query(None, description="Búsqueda por coincidencia en código"),
+    numero_serie: Optional[str] = Query(None, description="Búsqueda por coincidencia en número de serie"),
+    modelo: Optional[str] = Query(None, description="Búsqueda por coincidencia en modelo comercial"),
+    termino: Optional[str] = Query(None, description="Alias para el término general de búsqueda")
+):
+    collection = get_equipos_collection()
+
+    condiciones = []
+
+    # Búsqueda específica por criterios múltiples
+    if codigo and codigo.strip():
+        condiciones.append({"codigo": {"$regex": re.escape(codigo.strip()), "$options": "i"}})
+    if numero_serie and numero_serie.strip():
+        condiciones.append({"numero_serie": {"$regex": re.escape(numero_serie.strip()), "$options": "i"}})
+    if modelo and modelo.strip():
+        condiciones.append({"modelo": {"$regex": re.escape(modelo.strip()), "$options": "i"}})
+
+    # Búsqueda general 'q' o 'termino'
+    termino_general = q or termino
+    if termino_general and termino_general.strip():
+        patron = re.escape(termino_general.strip())
+        condiciones.append({
+            "$or": [
+                {"codigo": {"$regex": patron, "$options": "i"}},
+                {"numero_serie": {"$regex": patron, "$options": "i"}},
+                {"modelo": {"$regex": patron, "$options": "i"}}
+            ]
+        })
+
+    if not condiciones:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Debe proporcionar al menos un criterio de búsqueda: 'q', 'codigo', 'numero_serie' o 'modelo'."
+        )
+
+    filtro = {"$and": condiciones} if len(condiciones) > 1 else condiciones[0]
+
+    try:
+        resultados = list(collection.find(filtro))
+        return serialize_list(resultados)
+    except PyMongoError as err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error en la consulta de búsqueda: {str(err)}"
         )
 
 

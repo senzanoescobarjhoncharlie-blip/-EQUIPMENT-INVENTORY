@@ -181,3 +181,37 @@ def test_eliminar_equipo_inexistente(client):
     fake_id = str(ObjectId())
     response = client.delete(f"/api/v1/equipos/{fake_id}")
     assert response.status_code == 404
+
+
+# ============================================================================
+# 6. PRUEBAS DE BÚSQUEDA (GET /api/v1/equipos/buscar)
+# ============================================================================
+def test_buscar_equipos_por_criterios(client):
+    """Verifica búsqueda por código, serie o modelo."""
+    client.post("/api/v1/equipos", json=SAMPLE_EQUIPO)
+
+    # Por término general 'q'
+    res_q = client.get("/api/v1/equipos/buscar?q=DL5420")
+    assert res_q.status_code == 200
+    assert len(res_q.json()) == 1
+
+    # Por código específico
+    res_cod = client.get("/api/v1/equipos/buscar?codigo=EQ-PRB-001")
+    assert res_cod.status_code == 200
+    assert len(res_cod.json()) == 1
+
+    # Por serie específica
+    res_ser = client.get("/api/v1/equipos/buscar?numero_serie=SN-DL5420-001")
+    assert res_ser.status_code == 200
+    assert len(res_ser.json()) == 1
+
+    # Por modelo
+    res_mod = client.get("/api/v1/equipos/buscar?modelo=Latitude")
+    assert res_mod.status_code == 200
+    assert len(res_mod.json()) == 1
+
+
+def test_buscar_equipos_sin_criterios(client):
+    """Verifica 400 Bad Request si no se envía ningún parámetro de búsqueda."""
+    response = client.get("/api/v1/equipos/buscar")
+    assert response.status_code == 400
