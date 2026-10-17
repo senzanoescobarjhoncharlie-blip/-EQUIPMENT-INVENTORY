@@ -1,6 +1,14 @@
 # PROYECTO 11: SISTEMA DE INVENTARIO DE EQUIPOS INFORMÁTICOS 💻🔧
 
-API REST desarrollada con **FastAPI** y **MongoDB** para la administración integral de equipos informáticos de una institución. Permite gestionar características técnicas, ubicación física, responsable asignado y el historial cronológico de mantenimientos preventivos y correctivos.
+API REST desarrollada con **FastAPI** y **MongoDB Atlas** para la administración integral de equipos informáticos institucionales, gestionando características técnicas, ubicaciones físicas, responsables y el historial cronológico de mantenimientos.
+
+[![CI Pipeline](https://github.com/senzanoescobarjhoncharlie-blip/-EQUIPMENT-INVENTORY/actions/workflows/ci.yml/badge.svg)](https://github.com/senzanoescobarjhoncharlie-blip/-EQUIPMENT-INVENTORY/actions)
+[![Vercel Deployment](https://img.shields.io/badge/Vercel-Deployed-success?logo=vercel&style=flat)](https://equipment-inventory-liard.vercel.app)
+[![Swagger Docs](https://img.shields.io/badge/API_Docs-Swagger_UI-blue?logo=swagger&style=flat)](https://equipment-inventory-liard.vercel.app/docs)
+
+🌐 **URL de Producción en Vivo**: [https://equipment-inventory-liard.vercel.app](https://equipment-inventory-liard.vercel.app)  
+📖 **Documentación Interactiva (Swagger)**: [https://equipment-inventory-liard.vercel.app/docs](https://equipment-inventory-liard.vercel.app/docs)  
+🩺 **Estado de Salud de la API y MongoDB**: [https://equipment-inventory-liard.vercel.app/health](https://equipment-inventory-liard.vercel.app/health)  
 
 ---
 
