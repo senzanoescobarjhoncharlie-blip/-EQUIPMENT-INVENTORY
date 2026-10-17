@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from pymongo.errors import PyMongoError
 
 from core.database import get_equipos_collection
-from schemas.equipo import EquipoCreate, EquipoResponse, EquipoListResponse
+from schemas.equipo import EquipoCreate, EquipoUpdate, EquipoResponse, EquipoListResponse
 from utils.errors import validate_object_id
 from utils.serializers import serialize_doc, serialize_list
 
@@ -107,4 +107,40 @@ def consultar_equipo(id: str):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al consultar equipo: {str(err)}"
+        )
+
+
+@router.put(
+    "/{id}",
+    response_model=EquipoResponse,
+    summary="Modificar la informacion de un equipo"
+)
+def modificar_equipo(id: str, equipo_in: EquipoUpdate):
+    object_id = validate_object_id(id)
+    collection = get_equipos_collection()
+    try:
+        equipo_actual = collection.find_one({"_id": object_id})
+        if not equipo_actual:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Equipo con ID '{id}' no encontrado"
+            )
+
+        datos_actualizar = equipo_in.model_dump(exclude_unset=True)
+        if not datos_actualizar:
+            return serialize_doc(equipo_actual)
+
+        if "ubicacion" in datos_actualizar:
+            ubicacion_actual = equipo_actual.get("ubicacion", {})
+            ubicacion_actual.update(datos_actualizar["ubicacion"])
+            datos_actualizar["ubicacion"] = ubicacion_actual
+
+        collection.update_one({"_id": object_id}, {"$set": datos_actualizar})
+        return serialize_doc(collection.find_one({"_id": object_id}))
+    except HTTPException:
+        raise
+    except PyMongoError as err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al modificar equipo: {str(err)}"
         )
