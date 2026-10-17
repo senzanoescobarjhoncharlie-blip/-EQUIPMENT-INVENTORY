@@ -1,9 +1,11 @@
-﻿from fastapi import APIRouter, HTTPException, status
+﻿import re
+from typing import List, Optional
+from fastapi import APIRouter, HTTPException, Query, status
 from pymongo.errors import PyMongoError
 
 from core.database import get_equipos_collection
-from schemas.equipo import EquipoCreate, EquipoResponse
-from utils.serializers import serialize_doc
+from schemas.equipo import EquipoCreate, EquipoResponse, EquipoListResponse
+from utils.serializers import serialize_doc, serialize_list
 
 router = APIRouter(prefix="/equipos", tags=["Equipos"])
 
@@ -44,4 +46,39 @@ def crear_equipo(equipo_in: EquipoCreate):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error en la base de datos: {str(err)}"
+        )
+
+
+@router.get(
+    "",
+    response_model=EquipoListResponse,
+    summary="Listar todos los equipos"
+)
+def listar_equipos(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    tipo: Optional[str] = None,
+    marca: Optional[str] = None,
+    estado: Optional[str] = None
+):
+    collection = get_equipos_collection()
+    filtro = {}
+    if tipo:
+        filtro["tipo"] = {"$regex": f"^{re.escape(tipo.strip())}$", "$options": "i"}
+    if marca:
+        filtro["marca"] = {"$regex": f"^{re.escape(marca.strip())}$", "$options": "i"}
+    if estado:
+        filtro["estado"] = {"$regex": f"^{re.escape(estado.strip())}$", "$options": "i"}
+
+    try:
+        total = collection.count_documents(filtro)
+        cursor = collection.find(filtro).skip(skip).limit(limit)
+        return {
+            "total": total,
+            "equipos": serialize_list(list(cursor))
+        }
+    except PyMongoError as err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al listar equipos: {str(err)}"
         )
