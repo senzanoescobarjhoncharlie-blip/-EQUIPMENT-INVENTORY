@@ -6,40 +6,19 @@ ENV/
 env.bak/
 venv.bak/
 
-# Byte-compiled / optimizados
+# Variables de entorno y secretos
+.env
+.env.*
+!.env.example
+
+# Cache de Python y archivos compilados
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Archivos de entorno y credenciales (mantener seguro)
-.env
-.env.local
-.env.*.local
-!.env.example
-
-# Vercel
-.vercel/
-
-# Logs y bases de datos temporales
+# Logs
 *.log
-*.sqlite
-*.sqlite3
 
 # Editores e IDEs
 .vscode/
 .idea/
-*.swp
-*.swo
-*~
-
-# Pruebas y cobertura
-.pytest_cache/
-.coverage
-htmlcov/
-.mypy_cache/
-
-# SO
-.DS_Store
-Thumbs.db
-*.bak
-generar_historial.ps1
